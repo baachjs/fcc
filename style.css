@@ -117,6 +117,18 @@ button:hover{
 /* Colours for the two log entry types */
 .log-A { color: #FAF8F1; }   /* encrypted “A:” messages */
 .log-B { color: #FAEAB1; }   /* decrypted “B:” messages */
+
+/* ------------------- INPUT FIELD (bottom) ------------------- */
+textarea {
+  flex: 1;
+  resize: none;
+  padding: 0.5rem;
+  border: 1px solid #FAF8F1;   /* light border */
+  background: #334443;         /* YOUR requested background */
+  color: #FAF8F1;              /* text colour */
+  border-radius: 4px;
+}
+
 /* ---- Responsive tweak (optional) ---- */
 @media (max-width:600px){
   header{font-size:1.1rem;}
