@@ -114,7 +114,9 @@ button:hover{
 .log-B{               /* decrypted messages – “B:” */
   color:#FAEAB1;
 }
-
+/* Colours for the two log entry types */
+.log-A { color: #FAF8F1; }   /* encrypted “A:” messages */
+.log-B { color: #FAEAB1; }   /* decrypted “B:” messages */
 /* ---- Responsive tweak (optional) ---- */
 @media (max-width:600px){
   header{font-size:1.1rem;}
