@@ -143,7 +143,8 @@ function saveLog(arr) {
 }
 function addLogEntry(type, content) {
   const arr = loadLog();
-  arr.push({ ts: Date.now(), type, content });
+  // NOTE: we no longer store a timestamp – only type & content
+  arr.push({ type, content });
   if (arr.length > 200) arr.shift();   // keep size reasonable
   saveLog(arr);
   renderLog();
@@ -151,6 +152,7 @@ function addLogEntry(type, content) {
 
 /* ---------------------------------------------------------
    Render BOTH encrypted (A:) and decrypted (B:) messages
+   WITHOUT timestamps.
    --------------------------------------------------------- */
 function renderLog() {
   const arr = loadLog();
@@ -159,16 +161,15 @@ function renderLog() {
   arr.forEach(e => {
     const div = document.createElement('div');
     div.className = 'log-entry';
-    const time = new Date(e.ts).toLocaleTimeString();
 
     if (e.type === 'enc') {
-      // ENCRYPTED – prefix A: , colour #FAF8F1 (defined in CSS)
-      div.classList.add('log-A');
-      div.innerHTML = `<span>${time} A:</span> ${e.content}`;
+      // ENCRYPTED – show the **plain‑text** you typed, prefixed with A:
+      div.classList.add('log-A');               // colour #FAF8F1 (defined in CSS)
+      div.innerHTML = `<span>A:</span> ${e.content}`;
     } else if (e.type === 'dec') {
-      // DECRYPTED – prefix B: , colour #FAEAB1 (defined in CSS)
-      div.classList.add('log-B');
-      div.innerHTML = `<span>${time} B:</span> ${e.content}`;
+      // DECRYPTED – show the decrypted plaintext, prefixed with B:
+      div.classList.add('log-B');               // colour #FAEAB1 (defined in CSS)
+      div.innerHTML = `<span>B:</span> ${e.content}`;
     }
     logEl.appendChild(div);
   });
@@ -186,7 +187,9 @@ encryptBtn.addEventListener('click', async () => {
 
   try {
     const cipher = await encryptMessage(plain, hiddenPw.value);
-    addLogEntry('enc', cipher);   // stored but not shown in the UI
+
+    // **(A) Store the plain‑text in the log (so the conversation is readable)**
+    addLogEntry('enc', plain);   // <-- note we store `plain`, NOT `cipher`
 
     // ---- Share the ciphertext automatically ----
     if (navigator.canShare && navigator.share) {
@@ -215,7 +218,8 @@ decryptBtn.addEventListener('click', async () => {
 
   try {
     const plain = await decryptMessage(cipher, hiddenPw.value);
-    addLogEntry('dec', plain);   // visible in log with “B:”
+    // **(B) Store the decrypted result in the log**
+    addLogEntry('dec', plain);
     msgInput.value = '';
   } catch (err) {
     console.error(err);
