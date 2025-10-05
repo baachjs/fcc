@@ -118,32 +118,35 @@ function addLogEntry(type,content){
   renderLog();
 }
 
-/* Render ONLY decrypted messages (type === 'dec') */
-function renderLog(){
+/* ---------------------------------------------------------
+   Render BOTH encrypted (A:) and decrypted (B:) messages
+   --------------------------------------------------------- */
+function renderLog() {
   const arr = loadLog();
-  logEl.innerHTML='';
-  arr.forEach(e=>{
-    if(e.type==='dec'){
-      const div=document.createElement('div');
-      div.className='log-entry log-B';   // decrypted -> B colour
-      const time=new Date(e.ts).toLocaleTimeString();
-      div.innerHTML=`<span>${time} B:</span> ${e.content}`;
-      logEl.appendChild(div);
-    } else if(e.type==='enc'){
-      // We keep encrypted entries for history but do NOT display them.
-      // (If you ever want to show them, uncomment the block below.)
-      /*
-      const div=document.createElement('div');
-      div.className='log-entry log-A';
-      const time=new Date(e.ts).toLocaleTimeString();
-      div.innerHTML=`<span>${time} A:</span> ${e.content}`;
-      logEl.appendChild(div);
-      */
+  logEl.innerHTML = '';
+
+  arr.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+
+    const time = new Date(e.ts).toLocaleTimeString();
+
+    if (e.type === 'enc') {
+      // ENCRYPTED message – show with prefix A: and colour #FAF8F1
+      div.classList.add('log-A');               // colour defined in CSS
+      div.innerHTML = `<span>${time} A:</span> ${e.content}`;
+    } else if (e.type === 'dec') {
+      // DECRYPTED message – show with prefix B: and colour #FAEAB1
+      div.classList.add('log-B');               // colour defined in CSS
+      div.innerHTML = `<span>${time} B:</span> ${e.content}`;
     }
+
+    logEl.appendChild(div);
   });
+
+  // Auto‑scroll to newest entry
   logEl.scrollTop = logEl.scrollHeight;
 }
-
 /* ---------- Encrypt button ----------
    Uses the hidden passphrase (set at login) */
 encryptBtn.addEventListener('click', async ()=>{
