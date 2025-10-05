@@ -10,3 +10,13 @@ button{
   background:#fff;color:#000;
 }
 button:hover{background:#ddd;}
+/* ----------- Responsive layout ------------ */
+@media (max-width: 600px) {
+  header, footer {flex-direction:column; align-items:stretch;}
+  header h1 {margin-bottom:0.5rem; font-size:1.2rem;}
+  footer {gap:0.3rem;}
+  textarea, input[type="password"], button {
+    font-size:1rem;
+    padding:0.6rem;
+  }
+}
