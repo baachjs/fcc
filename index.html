@@ -30,6 +30,16 @@
 </head>
 
 <body>
+  <!-- PASSCODE OVERLAY (hidden after successful login) -->
+<div id="loginOverlay" style="
+  position:fixed; inset:0; background:rgba(0,0,0,0.85);
+  color:#fff; display:flex; flex-direction:column;
+  justify-content:center; align-items:center; z-index:1000;">
+  <h2>Enter your passphrase</h2>
+  <input id="loginPw" type="password" placeholder="Passphrase"
+         style="padding:0.5rem; font-size:1rem; margin:0.5rem 0;">
+  <button id="loginBtn" style="padding:0.5rem 1rem;">Unlock</button>
+</div>
   <header>
     <h1>Secure Share Chat</h1>
     <button id="theme-toggle">🌙</button>
