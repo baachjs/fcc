@@ -1,36 +1,81 @@
 /* -------------------------------------------------------------
-   Secure Share Chat – core logic
-   • Derive a key from a passphrase (PBKDF2 → AES‑GCM)
-   • Encrypt / Decrypt messages
-   • Store a simple log in localStorage (acts like a chat)
-   • Light / Dark theme toggle
-   • System share via the Web Share API (fallback to clipboard)
+   Secure Share Chat – updated for “conversation selector”
    ------------------------------------------------------------- */
 
-const logEl = document.getElementById("log");
-const msgInput = document.getElementById("msg");
-const pwInput = document.getElementById("pw");
-const encryptBtn = document.getElementById("encryptBtn");
-const decryptBtn = document.getElementById("decryptBtn");
-const themeBtn = document.getElementById("theme-toggle");
-const themeLink = document.getElementById("theme-stylesheet");
+const logEl      = document.getElementById('log');
+const msgInput   = document.getElementById('msg');
+const pwInput    = document.getElementById('pw');
+const encryptBtn = document.getElementById('encryptBtn');
+const decryptBtn = document.getElementById('decryptBtn');
+const themeBtn   = document.getElementById('theme-toggle');
+const logoutBtn  = document.getElementById('logoutBtn');   // <-- NEW
+const themeLink  = document.getElementById('theme-stylesheet');
 
-/* ---------- Passphrase gate & per‑passphrase logs ---------- */
-let activePassphrase = null;   // holds the passphrase after login
-
-// Helper: generate a storage key that is unique per passphrase
-function storageKeyFor(pw) {
-  // Simple hash – we don't need cryptographic strength here, just a deterministic key
-  const enc = new TextEncoder();
-  return crypto.subtle.digest('SHA-256', enc.encode(pw)).then(hash => {
-    const hex = Array.from(new Uint8Array(hash))
-                     .map(b => b.toString(16).padStart(2, '0'))
-                     .join('');
-    return `secureChatLog_${hex}`;   // e.g. secureChatLog_a1b2c3…
-  });
+/* ---------- Helper: base64‑url encode / decode ---------- */
+function b64UrlEncode(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
+}
+function b64UrlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; ++i) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
-// Show/hide the main UI after successful login
+/* ---------- Crypto (unchanged) ---------- */
+async function deriveKey(passphrase, salt) {
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(passphrase),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 200_000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+async function encryptMessage(plainText, passphrase) {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(passphrase, salt);
+  const cipherBuf = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, enc.encode(plainText));
+  const combined = new Uint8Array([...salt,...iv,...new Uint8Array(cipherBuf)]);
+  return b64UrlEncode(combined);
+}
+async function decryptMessage(b64Cipher, passphrase) {
+  const data = b64UrlDecode(b64Cipher);
+  const salt = data.slice(0,16);
+  const iv   = data.slice(16,28);
+  const ct   = data.slice(28);
+  const key = await deriveKey(passphrase, salt);
+  const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM',iv}, key, ct);
+  return new TextDecoder().decode(plainBuf);
+}
+
+/* ---------- Conversation selector (passphrase gate) ---------- */
+let activePassphrase = null;   // Holds the passphrase for the current session
+let LOG_KEY = 'secureChatLog_default'; // Will be replaced after login
+
+/** Generate a deterministic storage key from the passphrase (SHA‑256 → hex) **/
+async function storageKeyFor(pw) {
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(pw));
+  const hex = Array.from(new Uint8Array(hash))
+                   .map(b => b.toString(16).padStart(2,'0')).join('');
+  return `secureChatLog_${hex}`;
+}
+
+/** Show the main UI after a passphrase has been entered **/
 function showMainUI() {
   document.getElementById('loginOverlay').style.display = 'none';
   document.querySelector('header').style.display = '';
@@ -38,97 +83,36 @@ function showMainUI() {
   document.querySelector('footer').style.display = '';
 }
 
-/* ---------- Login button handler ---------- */
+/** Hide the UI and go back to the login screen (logout) **/
+function logout() {
+  activePassphrase = null;
+  LOG_KEY = 'secureChatLog_default';
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.querySelector('header').style.display = 'none';
+  document.querySelector('main').style.display = 'none';
+  document.querySelector('footer').style.display = 'none';
+  // clear the visible log (optional)
+  logEl.innerHTML = '';
+}
+
+/* ---------- Login button handler ----------
+   User types a passphrase → we compute a unique LOG_KEY,
+   load that conversation’s history, and reveal the UI. */
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const pw = document.getElementById('loginPw').value;
   if (!pw) return alert('Please enter a passphrase');
 
-  activePassphrase = pw;                 // keep it in memory (never persisted)
-  LOG_KEY = await storageKeyFor(pw);    // override the global log key
-  renderLog();                          // load the correct log for this passphrase
+  activePassphrase = pw;                     // keep it in memory only
+  LOG_KEY = await storageKeyFor(pw);         // unique key per conversation
+  renderLog();                               // load that conversation’s log
   showMainUI();
 });
 
-/* ---------- Helper: base64‑url encode / decode ---------- */
-function b64UrlEncode(buf) {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-function b64UrlDecode(str) {
-  // Pad to multiple of 4
-  str = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (str.length % 4) str += "=";
-  const binary = atob(str);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; ++i) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
+/* ---------- Logout button ----------
+   Allows you to switch to a different conversation. */
+logoutBtn.addEventListener('click', logout);
 
-/* ---------- Crypto: derive key, encrypt, decrypt ---------- */
-async function deriveKey(passphrase, salt) {
-  const enc = new TextEncoder();
-  const baseKey = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(passphrase),
-    { name: "PBKDF2" },
-    false,
-    ["deriveKey"],
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations: 200_000, // strong enough for browsers
-      hash: "SHA-256",
-    },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-async function encryptMessage(plainText, passphrase) {
-  const enc = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // GCM nonce
-
-  const key = await deriveKey(passphrase, salt);
-  const cipherBuf = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    enc.encode(plainText),
-  );
-
-  // concat salt|iv|ciphertext
-  const combined = new Uint8Array([
-    ...salt,
-    ...iv,
-    ...new Uint8Array(cipherBuf),
-  ]);
-  return b64UrlEncode(combined);
-}
-
-async function decryptMessage(b64Cipher, passphrase) {
-  const data = b64UrlDecode(b64Cipher);
-  const salt = data.slice(0, 16);
-  const iv = data.slice(16, 28);
-  const ct = data.slice(28);
-
-  const key = await deriveKey(passphrase, salt);
-  const plainBuf = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ct,
-  );
-  return new TextDecoder().decode(plainBuf);
-}
-
-/* ---------- Log helpers – now per passphrase ---------- */
-let LOG_KEY = 'secureChatLog_default';   // placeholder; will be overwritten after login
-
+/* ---------- Log helpers – per‑conversation ---------- */
 function loadLog() {
   const raw = localStorage.getItem(LOG_KEY);
   return raw ? JSON.parse(raw) : [];
@@ -147,71 +131,55 @@ function renderLog() {
   const entries = loadLog();
   logEl.innerHTML = '';
   entries.forEach(e => {
-    const div = document.createElement('div');
-    div.className = 'log-entry';
-    const time = new Date(e.ts).toLocaleTimeString();
-    const prefix = e.type === 'enc' ? 'A:' : e.type === 'dec' ? 'B:' : '';
-    // Only show decrypted messages (type === 'dec') in the UI, but we keep encrypted entries for history
+    // Only show decrypted messages (type === 'dec')
     if (e.type === 'dec') {
+      const div = document.createElement('div');
+      div.className = 'log-entry';
+      const time = new Date(e.ts).toLocaleTimeString();
+      const prefix = e.type === 'enc' ? 'A:' : e.type === 'dec' ? 'B:' : '';
       div.innerHTML = `<span>${time} ${prefix}</span> ${e.content}`;
       logEl.appendChild(div);
     }
   });
   logEl.scrollTop = logEl.scrollHeight;
 }
-}
 
-/* ---------- Theme handling ---------- */
-function setTheme(isDark) {
-  themeLink.href = isDark ? "dark.css" : "light.css";
-  themeBtn.textContent = isDark ? "☀️" : "🌙";
-  localStorage.setItem("prefers-dark", isDark);
-}
-function initTheme() {
-  const stored = localStorage.getItem("prefers-dark");
-  const prefersDark =
-    stored === null
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : stored === "true";
-  setTheme(prefersDark);
-}
-themeBtn.addEventListener("click", () => {
-  const currentlyDark = themeLink.getAttribute("href") === "dark.css";
-  setTheme(!currentlyDark);
-});
-
-/* ---------- Button actions ---------- */
+/* ---------- Encrypt / Decrypt button handlers ----------
+   They now **always** use the passphrase that was entered at login.
+   No extra validation is needed. */
 encryptBtn.addEventListener('click', async () => {
   const msg = msgInput.value.trim();
-  const pw  = pwInput.value;
-  if (!msg || !pw) return alert('Message and passphrase are required');
-
-  // Ensure the active passphrase matches the one used for the log
-  if (!activePassphrase || pw !== activePassphrase) {
-    return alert('Passphrase must match the one you unlocked with');
-  }
+  const pw  = pwInput.value;   // optional second field – keep for UI consistency
+  if (!msg) return alert('Message cannot be empty');
+  if (!activePassphrase) return alert('You must be logged in first');
 
   try {
-    const cipher = await encryptMessage(msg, pw);
-    addLogEntry('enc', cipher);   // store encrypted entry (won’t be displayed)
-    // Share / copy as before …
-    // (same code as before, omitted for brevity)
+    const cipher = await encryptMessage(msg, activePassphrase);
+    addLogEntry('enc', cipher);   // stored but not shown
+    // ----- Share / copy (unchanged) -----
+    if (navigator.canShare && navigator.share) {
+      try {
+        await navigator.share({title:'Encrypted Message',text:cipher});
+      } catch (_) {/* user cancelled */}
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(cipher);
+      alert('Cipher copied to clipboard');
+    }
     msgInput.value = '';
-  } catch (e) { console.error(e); alert('Encryption failed'); }
+  } catch (e) {
+    console.error(e);
+    alert('Encryption failed');
+  }
 });
 
 decryptBtn.addEventListener('click', async () => {
   const cipher = msgInput.value.trim();
-  const pw = pwInput.value;
-  if (!cipher || !pw) return alert('Ciphertext and passphrase are required');
-
-  if (!activePassphrase || pw !== activePassphrase) {
-    return alert('Passphrase must match the one you unlocked with');
-  }
+  if (!cipher) return alert('Paste a ciphertext to decrypt');
+  if (!activePassphrase) return alert('You must be logged in first');
 
   try {
-    const plain = await decryptMessage(cipher, pw);
-    addLogEntry('dec', plain);   // decrypted messages ARE displayed
+    const plain = await decryptMessage(cipher, activePassphrase);
+    addLogEntry('dec', plain);   // visible in the log with “B:”
     msgInput.value = '';
   } catch (e) {
     console.error(e);
@@ -219,13 +187,15 @@ decryptBtn.addEventListener('click', async () => {
   }
 });
 
-/* ---------- Init ---------- */
+/* ---------- Theme handling (unchanged) ---------- */
+themeBtn.addEventListener('click', () => {
+  const currentlyDark = themeLink.getAttribute('href') === 'dark.css';
+  setTheme(!currentlyDark);
+});
 initTheme();
-renderLog();
 
-/* Register service worker (if supported) – optional but nice */
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("sw.js")
-    .catch((err) => console.warn("SW registration failed", err));
+/* ---------- Service‑worker registration (unchanged) ---------- */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .catch(err => console.warn('SW registration failed', err));
 }
