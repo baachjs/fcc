@@ -45,22 +45,22 @@ footer {
   background:#34656D;
 }
 
-/* Textarea (message) */
+/* ------------------- INPUT FIELDS ------------------- */
+/* Message textarea */
 textarea {
-  flex:1;
-  resize:none;
-  padding:0.5rem;
-  border:1px solid #FAF8F1;
-  background:#34656D;
-  color:#FAF8F1;
-  border-radius:4px;
+  flex: 1;
+  resize: none;
+  padding: 0.5rem;
+  border: 1px solid #FAF8F1;
+  background: #334443;          /* <-- NEW background colour */
+  color: #FAF8F1;               /* <-- NEW text colour */
+  border-radius: 4px;
 }
 
-/* Hidden passphrase field (used by encryption) */
+/* Hidden passphrase field (still hidden) */
 #hiddenPw {
-  display:none;   /* we keep it hidden – value is set programmatically */
+  display: none;
 }
-
 /* Buttons (Encrypt, Decrypt, Open, Back) */
 button {
   background:#FAEAB1;
