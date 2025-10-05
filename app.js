@@ -15,6 +15,40 @@ const decryptBtn = document.getElementById("decryptBtn");
 const themeBtn = document.getElementById("theme-toggle");
 const themeLink = document.getElementById("theme-stylesheet");
 
+/* ---------- Passphrase gate & per‑passphrase logs ---------- */
+let activePassphrase = null;   // holds the passphrase after login
+
+// Helper: generate a storage key that is unique per passphrase
+function storageKeyFor(pw) {
+  // Simple hash – we don't need cryptographic strength here, just a deterministic key
+  const enc = new TextEncoder();
+  return crypto.subtle.digest('SHA-256', enc.encode(pw)).then(hash => {
+    const hex = Array.from(new Uint8Array(hash))
+                     .map(b => b.toString(16).padStart(2, '0'))
+                     .join('');
+    return `secureChatLog_${hex}`;   // e.g. secureChatLog_a1b2c3…
+  });
+}
+
+// Show/hide the main UI after successful login
+function showMainUI() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.querySelector('header').style.display = '';
+  document.querySelector('main').style.display = '';
+  document.querySelector('footer').style.display = '';
+}
+
+/* ---------- Login button handler ---------- */
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const pw = document.getElementById('loginPw').value;
+  if (!pw) return alert('Please enter a passphrase');
+
+  activePassphrase = pw;                 // keep it in memory (never persisted)
+  LOG_KEY = await storageKeyFor(pw);    // override the global log key
+  renderLog();                          // load the correct log for this passphrase
+  showMainUI();
+});
+
 /* ---------- Helper: base64‑url encode / decode ---------- */
 function b64UrlEncode(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
